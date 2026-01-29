@@ -1,0 +1,1107 @@
+﻿<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <meta name="theme-color" content="#4f46e5">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="LifeLog++">
+    <title>LifeLog++ 生活整合助手 (Sync)</title>
+    
+    <!-- 1. 核心函式庫 (React + HTM) -->
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/htm@3.1.1/dist/htm.umd.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- 2. Firebase -->
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
+    
+    <!-- 3. 工具庫 (PDF 與 截圖) -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+
+
+    <!-- Tailwind Dark Mode Config -->
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        dark: {
+                            bg: '#0f172a',
+                            card: '#1e293b',
+                            text: '#f1f5f9',
+                            muted: '#94a3b8'
+                        }
+                    },
+                    animation: {
+                        'fade-in': 'fadeIn 0.3s ease-out forwards',
+                    }
+                }
+            }
+        }
+    </script>
+
+
+    <style>
+        body { 
+            -webkit-tap-highlight-color: transparent; 
+            font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Noto Sans TC", sans-serif; 
+            overflow-x: hidden; 
+            transition: background-color 0.3s, color 0.3s;
+        }
+        .custom-scrollbar::-webkit-scrollbar { width: 4px; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
+        .dark .custom-scrollbar::-webkit-scrollbar-thumb { background: #475569; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        .safe-area-bottom { padding-bottom: env(safe-area-inset-bottom); }
+        
+        /* 修正：強制覆蓋 Tailwind p-4 樣式，確保手機版底部不被導航列遮擋 */
+        .main-content { 
+            min-height: 100vh;
+            min-height: 100dvh; 
+            padding-bottom: calc(10rem + env(safe-area-inset-bottom)) !important; 
+        }
+        @media (min-width: 768px) { .main-content { padding-bottom: 2rem !important; } }
+        
+        .nav-active { background-color: #4f46e5 !important; color: white !important; box-shadow: 0 4px 15px -3px rgba(79, 70, 229, 0.4); }
+        canvas { touch-action: none; cursor: crosshair; image-rendering: pixelated; }
+        .input-standard { 
+            width: 100%; padding: 12px 14px; border-radius: 12px; font-weight: 600; outline: none; border: 2px solid transparent; transition: all 0.2s; font-size: 15px;
+            background-color: #f1f5f9; color: #334155;
+        }
+        .dark .input-standard { background-color: #334155; color: #f8fafc; }
+        .input-standard:focus { border-color: #4f46e5; background-color: #fff; box-shadow: 0 0 0 4px rgba(79, 70, 229, 0.1); }
+        .dark .input-standard:focus { background-color: #1e293b; }
+        .msg-box { position: fixed; bottom: 100px; left: 50%; transform: translateX(-50%); z-index: 999; padding: 10px 24px; border-radius: 99px; font-weight: bold; font-size: 13px; box-shadow: 0 10px 30px rgba(0,0,0,0.2); animation: fadeIn 0.3s ease; backdrop-filter: blur(8px); }
+        .btn-circle { width: 44px; height: 44px; display: flex; align-items: center; justify-content: center; border-radius: 50%; transition: all 0.2s; cursor: pointer; border: 1.5px solid #e2e8f0; background: #fff; }
+        .dark .btn-circle { background: #1e293b; border-color: #334155; color: #cbd5e1; }
+        .btn-circle:hover { border-color: #4f46e5; color: #4f46e5; }
+        .btn-circle:active { transform: scale(0.9); }
+        .glass-panel { background: rgba(255, 255, 255, 0.8); backdrop-filter: blur(12px); border: 1px solid rgba(255,255,255,0.5); }
+        .dark .glass-panel { background: rgba(30, 41, 59, 0.8); border: 1px solid rgba(255,255,255,0.05); }
+    </style>
+</head>
+<body class="bg-slate-50 text-slate-800 dark:bg-dark-bg dark:text-dark-text selection:bg-indigo-500 selection:text-white">
+    <div id="root">
+        <div style="height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; color: #4f46e5;">
+            <div style="font-size: 42px; font-weight: 900; letter-spacing: -2px; margin-bottom: 12px; animation: fadeIn 1s infinite alternate;">LifeLog++</div>
+            <div style="font-weight: bold; background: #eef2ff; padding: 8px 20px; border-radius: 99px; font-size: 13px; color: #4338ca;">生活整合助手 啟動中...</div>
+        </div>
+    </div>
+
+
+    <!-- PDF 渲染暫存區 (隱藏) -->
+    <div id="pdf-temp-container" style="position: fixed; top: -9999px; left: -9999px; width: 210mm; min-height: 297mm; background: white; color: black; z-index: -1;"></div>
+
+
+    <script>
+        const { useState, useEffect, useRef, useMemo, Fragment, memo } = React;
+        const html = htm.bind(React.createElement);
+
+
+        // --- 0. 工具函數 ---
+        const compressImage = (file) => {
+            return new Promise((resolve) => {
+                const reader = new FileReader();
+                reader.readAsDataURL(file);
+                reader.onload = (event) => {
+                    const img = new Image();
+                    img.src = event.target.result;
+                    img.onload = () => {
+                        const canvas = document.createElement('canvas');
+                        const MAX_WIDTH = 800;
+                        const scaleSize = MAX_WIDTH / img.width;
+                        canvas.width = MAX_WIDTH;
+                        canvas.height = img.height * scaleSize;
+                        const ctx = canvas.getContext('2d');
+                        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+                        resolve(canvas.toDataURL('image/jpeg', 0.8));
+                    }
+                }
+            });
+        };
+
+
+        const generateSyncId = () => {
+            return 'key_' + Math.random().toString(36).substr(2, 9).toUpperCase();
+        };
+
+
+        // --- 1. 圖示組件 ---
+        function Icon({ name, size = 20, className = "" }) {
+            const icons = {
+                'home': html`<${Fragment}><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></${Fragment}>`,
+                'dashboard': html`<g><rect x="3" y="3" width="7" height="9"/><rect x="14" y="3" width="7" height="5"/><rect x="14" y="12" width="7" height="9"/><rect x="3" y="16" width="7" height="5"/></g>`,
+                'calendar': html`<g><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></g>`,
+                'todo': html`<g><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></g>`,
+                'note': html`<g><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></g>`,
+                'wallet': html`<g><path d="M20 12V8H6a2 2 0 0 1-2-2c0-1.1.9-2 2-2h12v4"/><path d="M4 6v12c0 1.1.9 2 2 2h14v-4"/><path d="M18 12a2 2 0 0 0-2 2c0 1.1.9 2 2 2h4v-4h-4z"/></g>`,
+                'map': html`<g><polygon points="1 6 1 22 8 18 16 22 23 18 23 2 16 6 8 2 1 6"/><line x1="8" y1="2" x2="8" y2="18"/><line x1="16" y1="6" x2="16" y2="22"/></g>`,
+                'trash': html`<g><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></g>`,
+                'edit': html`<g><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></g>`,
+                'plus': html`<g><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></g>`,
+                'x': html`<g><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></g>`,
+                'camera': html`<g><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></g>`,
+                'image': html`<g><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></g>`,
+                'pen': html`<g><path d="M12 19l7-7 3 3-7 7-3-3z"/><path d="M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z"/></g>`,
+                'download': html`<g><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></g>`,
+                'file-text': html`<g><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></g>`,
+                'loader': html`<g><path d="M12 2v4"/><path d="M12 18v4"/><path d="M4.93 4.93l2.83 2.83"/><path d="M16.24 16.24l2.83 2.83"/></g>`,
+                'check': html`<polyline points="20 6 9 17 4 12"/>`,
+                'chevron-left': html`<polyline points="15 18 9 12 15 6"/>`,
+                'chevron-right': html`<polyline points="9 18 15 12 9 6"/>`,
+                'moon': html`<path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>`,
+                'sun': html`<g><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></g>`,
+                'help': html`<${Fragment}><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></${Fragment}>`,
+                'settings': html`<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/>`,
+                'refresh': html`<polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>`
+            };
+            return html`
+                <svg xmlns="http://www.w3.org/2000/svg" width=${size} height=${size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className=${className}>
+                    ${icons[name] || html`<circle cx="12" cy="12" r="10" />`}
+                </svg>
+            `;
+        }
+
+
+        // --- 2. Firebase ---
+        const fbConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {
+            apiKey: "YOUR_API_KEY", authDomain: "YOUR_PROJECT.firebaseapp.com", projectId: "YOUR_PROJECT_ID",
+            storageBucket: "YOUR_PROJECT.appspot.com", messagingSenderId: "SENDER_ID", appId: "APP_ID"
+        };
+        
+        if (fbConfig.apiKey && !firebase.apps.length) {
+            firebase.initializeApp(fbConfig);
+            firebase.firestore().enablePersistence({ synchronizeTabs: true }).catch(err => console.log("Persistence Error", err));
+        }
+        
+        const db_ref = firebase.firestore();
+        const auth_ref = firebase.auth();
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'lifelog-v68-flagship';
+
+
+        // --- 3. 視覺化圖表 ---
+        const FinancialChart = ({ income, expense }) => {
+            const total = income + expense;
+            if (total === 0) return html`
+                <div className="h-24 bg-slate-50 dark:bg-slate-800 rounded-2xl flex items-center justify-center text-slate-300 dark:text-slate-600 text-xs font-bold">尚無財務數據</div>
+            `;
+            const incomePct = Math.round((income / total) * 100);
+            const expensePct = Math.round((expense / total) * 100);
+            return html`
+                <div className="space-y-3">
+                    <div className="flex justify-between text-xs font-bold tracking-wider">
+                        <span className="text-emerald-500">收入 ${incomePct}%</span>
+                        <span className="text-rose-500">支出 ${expensePct}%</span>
+                    </div>
+                    <div className="h-4 w-full bg-slate-100 dark:bg-slate-700 rounded-full overflow-hidden flex shadow-inner">
+                        <div style=${{ width: `${incomePct}%` }} className="h-full bg-emerald-500 transition-all duration-1000 ease-out"></div>
+                        <div style=${{ width: `${expensePct}%` }} className="h-full bg-rose-500 transition-all duration-1000 ease-out"></div>
+                    </div>
+                    <div className="flex justify-between text-[10px] text-slate-400 dark:text-slate-500 font-mono">
+                        <span>$${income.toLocaleString()}</span>
+                        <span>$${expense.toLocaleString()}</span>
+                    </div>
+                </div>
+            `;
+        };
+
+
+        // --- 4. 基礎 UI ---
+        function Modal({ isOpen, onClose, title, children, isSaving = false, size = 'md' }) {
+            if (!isOpen) return null;
+            const szClass = size === 'lg' ? 'max-w-3xl' : 'max-w-md';
+            return html`
+                <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
+                    <div className=${`bg-white dark:bg-dark-card rounded-[2rem] shadow-2xl w-full ${szClass} overflow-hidden animate-fade-in max-h-[92vh] flex flex-col border border-white/20 dark:border-slate-700`}>
+                        <div className="flex justify-between items-center p-5 border-b border-slate-100 dark:border-slate-700 sticky top-0 bg-white/90 dark:bg-dark-card/90 z-10 backdrop-blur-md">
+                            <h3 className="text-xl font-black text-slate-800 dark:text-slate-100 tracking-tight">${title}</h3>
+                            <button onClick=${onClose} className="text-slate-300 hover:text-rose-500 p-1 active:scale-75 transition-transform"><${Icon} name="x" size=${24}/></button>
+                        </div>
+                        <div className="p-6 overflow-y-auto custom-scrollbar relative flex-1 text-slate-600 dark:text-slate-300">
+                            ${isSaving && html`<div className="absolute inset-0 bg-white/80 dark:bg-slate-900/80 flex flex-col items-center justify-center z-20"><${Icon} name="loader" size=${40} className="animate-spin text-indigo-600 mb-2" /><span className="font-bold text-indigo-600 text-xs uppercase animate-pulse">雲端同步中...</span></div>`}
+                            ${children}
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+
+        const DrawingPad = memo(({ onSave, onCancel }) => {
+            const canvasRef = useRef(null);
+            const containerRef = useRef(null);
+            const ctxRef = useRef(null);
+            const isDrawing = useRef(false);
+
+
+            useEffect(() => {
+                const timer = setTimeout(() => {
+                    const cvs = canvasRef.current;
+                    if (!cvs || !containerRef.current) return;
+                    cvs.width = containerRef.current.offsetWidth || 350;
+                    cvs.height = 380;
+                    const ctx = cvs.getContext('2d', { desynchronized: true });
+                    ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.strokeStyle = '#4f46e5'; ctx.lineWidth = 4;
+                    ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, cvs.width, cvs.height);
+                    ctxRef.current = ctx;
+
+
+                    const getXY = (e) => {
+                        const r = cvs.getBoundingClientRect();
+                        return { x: e.clientX - r.left, y: e.clientY - r.top };
+                    };
+                    const start = (e) => { e.target.setPointerCapture(e.pointerId); isDrawing.current = true; ctx.beginPath(); const p = getXY(e); ctx.moveTo(p.x, p.y); };
+                    const move = (e) => { if (!isDrawing.current) return; const p = getXY(e); requestAnimationFrame(() => { ctx.lineTo(p.x, p.y); ctx.stroke(); }); };
+                    const end = () => { isDrawing.current = false; };
+                    cvs.addEventListener('pointerdown', start); cvs.addEventListener('pointermove', move); cvs.addEventListener('pointerup', end);
+                    return () => {
+                        cvs.removeEventListener('pointerdown', start); cvs.removeEventListener('pointermove', move); cvs.removeEventListener('pointerup', end);
+                    };
+                }, 150);
+                return () => clearTimeout(timer);
+            }, []);
+
+
+            return html`
+                <div className="space-y-4 animate-fade-in" ref=${containerRef}>
+                    <div className="border-2 border-dashed border-indigo-100 dark:border-slate-600 rounded-3xl overflow-hidden bg-white shadow-inner">
+                        <canvas ref=${canvasRef} style=${{ touchAction: 'none' }} />
+                    </div>
+                    <div className="flex justify-between items-center px-1">
+                        <button onClick=${()=>{ctxRef.current.fillStyle='#ffffff'; ctxRef.current.fillRect(0,0,canvasRef.current.width,canvasRef.current.height);}} className="text-rose-500 font-bold text-xs bg-rose-50 dark:bg-rose-900/20 px-4 py-2 rounded-xl">清除重寫</button>
+                        <div className="space-x-3">
+                            <button onClick=${onCancel} className="text-slate-400 font-bold text-xs px-4">取消</button>
+                            <button onClick=${()=>onSave(canvasRef.current.toDataURL('image/jpeg', 0.8))} className="bg-indigo-600 text-white px-6 py-2 rounded-xl font-bold text-xs shadow-lg active:scale-95 transition-all">確認存入</button>
+                        </div>
+                    </div>
+                </div>
+            `;
+        });
+
+
+        // --- 5. 主應用程式 ---
+        function App() {
+            // App Config State
+            const [appConfig, setAppConfig] = useState(() => {
+                try {
+                    const saved = localStorage.getItem('lifelog_v69_config');
+                    return saved ? JSON.parse(saved) : { userName: '', systemName: 'LifeLog++', syncId: generateSyncId(), isSetup: false };
+                } catch {
+                    return { userName: '', systemName: 'LifeLog++', syncId: generateSyncId(), isSetup: false };
+                }
+            });
+
+
+            const [setupForm, setSetupForm] = useState({ 
+                userName: appConfig.userName, 
+                systemName: appConfig.systemName,
+                syncId: appConfig.syncId 
+            });
+
+
+            const [user, setUser] = useState(null);
+            const [activeTab, setActiveTab] = useState('dashboard');
+            const [darkMode, setDarkMode] = useState(() => localStorage.getItem('theme') === 'dark');
+            const [message, setMessage] = useState(null);
+            
+            const [notes, setNotes] = useState([]);
+            const [transactions, setTransactions] = useState([]);
+            const [plans, setPlans] = useState([]);
+            const [todos, setTodos] = useState([]);
+            
+            const [currentDate, setCurrentDate] = useState(new Date());
+            const [deleteTarget, setDeleteTarget] = useState(null);
+            const [showNoteModal, setShowNoteModal] = useState(false);
+            const [showTransModal, setShowTransModal] = useState(false);
+            const [showPlanModal, setShowPlanModal] = useState(false);
+            const [showTodoModal, setShowTodoModal] = useState(false);
+            const [showHelpModal, setShowHelpModal] = useState(false);
+            const [showSettingsModal, setShowSettingsModal] = useState(false); // 新增設定 Modal 狀態
+            const [isSaving, setIsSaving] = useState(false);
+            const [isDrawingMode, setIsDrawingMode] = useState(false);
+            const [editingId, setEditingId] = useState(null);
+            const [dayDetail, setDayDetail] = useState(null);
+
+
+            const defaultTrans = { type: 'expense', amount: '', category: '', recipient: '', description: '', date: '', time: '' };
+            const defaultNote = { title: '', content: '', date: '', time: '', tags: '', attachments: [] };
+            const defaultPlan = { title: '', location: '', startDate: '', endDate: '', description: '' };
+            const defaultTodo = { title: '', content: '', date: '', time: '' };
+            const [transForm, setTransForm] = useState(defaultTrans);
+            const [noteForm, setNoteForm] = useState(defaultNote);
+            const [planForm, setPlanForm] = useState(defaultPlan);
+            const [todoForm, setTodoForm] = useState(defaultTodo);
+
+
+            const flashMsg = (txt, type = 'success') => { setMessage({ txt, type }); setTimeout(() => setMessage(null), 3000); };
+
+
+            useEffect(() => {
+                localStorage.setItem('lifelog_v69_config', JSON.stringify(appConfig));
+                document.title = appConfig.systemName + " v69";
+            }, [appConfig]);
+
+
+            useEffect(() => {
+                if (darkMode) {
+                    document.documentElement.classList.add('dark');
+                    localStorage.setItem('theme', 'dark');
+                } else {
+                    document.documentElement.classList.remove('dark');
+                    localStorage.setItem('theme', 'light');
+                }
+            }, [darkMode]);
+
+
+            const calLogic = useMemo(() => {
+                const year = currentDate.getFullYear();
+                const month = currentDate.getMonth();
+                const firstDay = new Date(year, month, 1).getDay();
+                const totalDays = new Date(year, month + 1, 0).getDate();
+                return { year, month, firstDay, totalDays };
+            }, [currentDate]);
+
+
+            const historyOptions = useMemo(() => {
+                const cats = Array.from(new Set([...["飲食", "交通", "娛樂", "購物", "居家", "薪資", "其它"], ...transactions.map(t => t.category)])).filter(Boolean);
+                const recs = Array.from(new Set([...["自己", "家人", "公司", "朋友"], ...transactions.map(t => t.recipient)])).filter(Boolean);
+                return { categories: cats, recipients: recs };
+            }, [transactions]);
+
+
+            const uniqueTags = useMemo(() => {
+                const tagsSet = new Set(["生活", "靈感", "重要", "待辦"]);
+                notes.forEach(n => {
+                    if (n.tags) {
+                        n.tags.split(/[,，\s]+/).forEach(t => { if (t.trim()) tagsSet.add(t.trim()); });
+                    }
+                });
+                return Array.from(tagsSet);
+            }, [notes]);
+
+
+            const stats = useMemo(() => {
+                const ti = transactions.filter(t => t.type === 'income').reduce((a, c) => a + (Number(c.amount) || 0), 0);
+                const te = transactions.filter(t => t.type === 'expense').reduce((a, c) => a + (Number(c.amount) || 0), 0);
+                return { in: ti, ex: te, bal: ti - te };
+            }, [transactions]);
+
+
+            useEffect(() => {
+                const initAuth = async () => {
+                    const token = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
+                    try { if (token) await auth_ref.signInWithCustomToken(token); else await auth_ref.signInAnonymously(); } catch (e) { console.warn(e); }
+                };
+                initAuth();
+                return auth_ref.onAuthStateChanged(u => setUser(u));
+            }, []);
+
+
+            // 同步核心邏輯：使用公共路徑並過濾 Sync ID
+            useEffect(() => {
+                if (!user || !appConfig.isSetup) return;
+                
+                // 使用公共路徑，但根據 appConfig.syncId 進行過濾
+                const path = `artifacts/${appId}/public/data`; 
+                
+                const sync = (col, set) => db_ref.collection(`${path}/${col}`).onSnapshot(s => {
+                    const myData = s.docs
+                        .map(d=>({id:d.id, ...d.data()}))
+                        .filter(d => d.syncId === appConfig.syncId) // 關鍵：過濾金鑰
+                        .sort((a,b)=>(b.timestamp||0)-(a.timestamp||0));
+                    set(myData);
+                });
+                
+                const unsubs = [sync('notes', setNotes), sync('transactions', setTransactions), sync('todos', setTodos), sync('plans', setPlans)];
+                return () => unsubs.forEach(u => u());
+            }, [user, appConfig.isSetup, appConfig.syncId]);
+
+
+            const handleSetupComplete = () => {
+                if (!setupForm.userName.trim()) return alert("請輸入操作者名稱");
+                if (!setupForm.syncId.trim()) return alert("請輸入同步金鑰");
+                setAppConfig({ 
+                    ...setupForm, 
+                    systemName: setupForm.systemName.trim() || 'LifeLog++', 
+                    isSetup: true 
+                });
+            };
+
+
+            // 新增：切換任務完成狀態的函式
+            const toggleTodo = async (todo) => {
+                if (!user) return;
+                try {
+                    // 直接更新雲端資料庫
+                    await db_ref.collection(`artifacts/${appId}/public/data/todos`).doc(todo.id).update({
+                        completed: !todo.completed
+                    });
+                    flashMsg(todo.completed ? "任務已重啟" : "任務已完成！");
+                } catch (e) {
+                    console.error(e);
+                    flashMsg("狀態更新失敗", "error");
+                }
+            };
+
+
+            const saveData = async (col, data, setForm, defaultForm, setModal, msg) => {
+                if(!user || !data.title && !data.amount) return;
+                setIsSaving(true);
+                try {
+                    const payload = { 
+                        ...data, 
+                        timestamp: Date.now(),
+                        syncId: appConfig.syncId // 寫入時附帶 Sync ID
+                    };
+                    if (payload.amount) payload.amount = Number(payload.amount);
+                    
+                    // 寫入公共路徑
+                    const ref = db_ref.collection(`artifacts/${appId}/public/data/${col}`);
+                    
+                    if(editingId) await ref.doc(editingId).update(payload); else await ref.add(payload);
+                    setForm(defaultForm); setModal(false); setEditingId(null); flashMsg(msg);
+                } catch(e) { flashMsg("儲存失敗", "error"); console.error(e); } finally { setIsSaving(false); }
+            };
+
+
+            const handleImageUpload = async (e) => {
+                if (e.target.files[0]) {
+                    flashMsg("正在壓縮圖片...");
+                    const compressed = await compressImage(e.target.files[0]);
+                    setNoteForm(p => ({ ...p, attachments: [...p.attachments, { url: compressed }] }));
+                    flashMsg("圖片已優化載入");
+                }
+            };
+
+
+            const executeDelete = async () => {
+                if (!deleteTarget) return;
+                try {
+                    // 刪除公共路徑的資料
+                    await db_ref.collection(`artifacts/${appId}/public/data/${deleteTarget.col}`).doc(deleteTarget.id).delete();
+                    flashMsg("已移除項目");
+                } catch(e) { flashMsg("刪除失敗", "error"); }
+                setDeleteTarget(null);
+            };
+
+
+            const downloadFile = (content, name, type) => {
+                const a = document.createElement('a');
+                a.href = URL.createObjectURL(new Blob(["\uFEFF"+content], {type: type+";charset=utf-8"}));
+                a.download = name; a.click();
+            };
+
+
+            const exportFinanceCSV = () => {
+                if (transactions.length === 0) return flashMsg("無財務資料可匯出", "error");
+                let csv = "日期,時間,類別,對象,描述,收入,支出\n";
+                transactions.forEach(t => {
+                    const income = t.type === 'income' ? t.amount : '';
+                    const expense = t.type === 'expense' ? t.amount : '';
+                    csv += `${t.date},${t.time || ''},${t.category},"${t.recipient || ''}","${t.description||''}",${income},${expense}\n`;
+                });
+                csv += `\n,,,總計,,${stats.in},${stats.ex}\n`;
+                csv += `,,,淨資產結餘,,${stats.bal}\n`;
+                downloadFile(csv, `${appConfig.systemName}_財務報表_${currentDate.toISOString().split('T')[0]}.csv`, 'text/csv');
+                flashMsg("財務報表已匯出");
+            };
+
+
+            const exportPlanDoc = () => {
+                 if (plans.length === 0) return flashMsg("無行程資料可匯出", "error");
+                 let docText = `${appConfig.systemName} 行程規劃清單\n========================================\n\n`;
+                 plans.forEach(p => {
+                     docText += `【主題】：${p.title}\n【期間】：${p.startDate} ~ ${p.endDate}\n【目的地】：${p.location}\n【詳細規劃】：\n${p.description || '無'}\n----------------------------------------\n\n`;
+                 });
+                 downloadFile(docText, `${appConfig.systemName}_行程彙整_${currentDate.toISOString().split('T')[0]}.txt`, 'text/plain');
+                 flashMsg("行程清單已匯出");
+            };
+
+
+            const exportSinglePlan = (p) => {
+                 let docText = `${appConfig.systemName} 單筆行程規劃\n========================================\n\n`;
+                 docText += `【主題】：${p.title}\n【期間】：${p.startDate} ~ ${p.endDate}\n【目的地】：${p.location}\n【詳細規劃】：\n${p.description || '無'}\n----------------------------------------\n\nGenerated by ${appConfig.systemName}`;
+                 downloadFile(docText, `${p.title}_行程規劃.txt`, 'text/plain');
+                 flashMsg("單筆行程已匯出");
+            };
+
+
+            const exportNoteText = (n) => {
+                const content = `${appConfig.systemName} 記事備份\n日期: ${n.date} ${n.time}\n標題: ${n.title}\n標籤: ${n.tags||''}\n----------------\n${n.content}`;
+                downloadFile(content, `${n.title}.txt`, 'text/plain');
+            };
+
+
+            const exportNotePDF = async (n) => {
+                flashMsg("正在製作高畫質 PDF，請稍候...");
+                const container = document.getElementById('pdf-temp-container');
+                if (!container) return;
+
+
+                let imgsHtml = '';
+                if (n.attachments && n.attachments.length > 0) {
+                    imgsHtml = `<div style="display: flex; gap: 15px; flex-wrap: wrap; margin-bottom: 25px;">
+                        ${n.attachments.map(a => `<img src="${a.url}" style="max-width: 150px; max-height: 150px; object-fit: cover; border-radius: 8px; border: 1px solid #eee;" />`).join('')}
+                    </div>`;
+                }
+
+
+                container.innerHTML = `
+                    <div style="font-family: 'Noto Sans TC', sans-serif; padding: 40px; background: white;">
+                        <h1 style="font-size: 28px; font-weight: bold; margin-bottom: 10px; color: #2d3748;">${n.title}</h1>
+                        <div style="font-size: 14px; color: #718096; margin-bottom: 25px; border-bottom: 2px solid #e2e8f0; padding-bottom: 15px;">
+                            <span style="margin-right: 15px;">📅 ${n.date} ${n.time}</span>
+                            <span>🏷️ ${n.tags || '未分類'}</span>
+                        </div>
+                        ${imgsHtml}
+                        <div style="font-size: 16px; line-height: 1.8; color: #1a202c; white-space: pre-wrap; word-break: break-all;">${n.content}</div>
+                        <div style="margin-top: 50px; font-size: 12px; color: #a0aec0; text-align: center; border-top: 1px solid #f7fafc; padding-top: 20px;">
+                            Generated by ${appConfig.systemName} v68
+                        </div>
+                    </div>
+                `;
+
+
+                try {
+                    const canvas = await html2canvas(container, { scale: 2, useCORS: true, logging: false });
+                    const imgData = canvas.toDataURL('image/jpeg', 0.95);
+                    const { jsPDF } = window.jspdf;
+                    const pdf = new jsPDF('p', 'mm', 'a4');
+                    const pdfWidth = pdf.internal.pageSize.getWidth();
+                    const pdfHeight = pdf.internal.pageSize.getHeight();
+                    const imgProps = pdf.getImageProperties(imgData);
+                    const imgHeight = (imgProps.height * pdfWidth) / imgProps.width;
+                    pdf.addImage(imgData, 'JPEG', 0, 0, pdfWidth, imgHeight);
+                    pdf.save(`${n.title}.pdf`);
+                    flashMsg("PDF 下載成功！");
+                } catch (err) {
+                    console.error(err);
+                    flashMsg("PDF 製作失敗，請重試", "error");
+                } finally {
+                    container.innerHTML = '';
+                }
+            };
+
+
+            const getLunarDate = (date) => {
+                try { 
+                    const parts = new Intl.DateTimeFormat('zh-TW-u-ca-chinese', { day: 'numeric', month: 'short' }).formatToParts(date);
+                    const dPart = parts.find(p => p.type === 'day').value.replace('日', '');
+                    const mPart = parts.find(p => p.type === 'month').value;
+                    if (dPart === '1' || dPart === '初一') return mPart;
+                    return dPart; 
+                } catch (e) { return ''; }
+            };
+
+
+            const openModal = (type, data = null) => {
+                const now = new Date();
+                const dateStr = now.toISOString().split('T')[0];
+                const timeStr = now.toTimeString().slice(0,5);
+                setEditingId(data?.id || null);
+                if (type === 'trans') { setTransForm(data || {...defaultTrans, date: dateStr, time: timeStr}); setShowTransModal(true); }
+                if (type === 'note') { setNoteForm(data || {...defaultNote, date: dateStr, time: timeStr}); setShowNoteModal(true); }
+                if (type === 'plan') { setPlanForm(data || {...defaultPlan, startDate: dateStr, endDate: dateStr}); setShowPlanModal(true); }
+                if (type === 'todo') { setTodoForm(data || {...defaultTodo, date: dateStr, time: timeStr}); setShowTodoModal(true); }
+            };
+
+
+            if (!appConfig.isSetup) {
+                return html`
+                    <div className="min-h-screen flex items-center justify-center bg-slate-50 dark:bg-dark-bg text-slate-800 dark:text-dark-text p-6">
+                        <div className="bg-white dark:bg-dark-card w-full max-w-md p-8 rounded-[2.5rem] shadow-2xl border dark:border-slate-700 animate-fade-in">
+                            <div className="text-center mb-8">
+                                <div className="w-20 h-20 bg-indigo-600 rounded-3xl flex items-center justify-center text-white font-black text-3xl shadow-lg mx-auto mb-4 italic">L</div>
+                                <h1 className="text-3xl font-black mb-2">歡迎使用</h1>
+                                <p className="text-slate-400 text-sm font-bold">請設定您的個人化系統資訊</p>
+                            </div>
+                            
+                            <div className="space-y-5">
+                                <div>
+                                    <label className="block text-xs font-black text-slate-400 uppercase tracking-widest mb-2 ml-2">操作者名稱 (您的暱稱)</label>
+                                    <input type="text" value=${setupForm.userName} onInput=${e => setSetupForm({...setupForm, userName: e.target.value})} className="input-standard text-center text-lg" placeholder="例如: 探索者" />
+                                </div>
+                                
+                                <div>
+                                    <label className="block text-xs font-black text-slate-400 uppercase tracking-widest mb-2 ml-2">系統名稱 (自訂標題)</label>
+                                    <input type="text" value=${setupForm.systemName} onInput=${e => setSetupForm({...setupForm, systemName: e.target.value})} className="input-standard text-center text-lg" placeholder="預設: LifeLog++" />
+                                </div>
+
+
+                                <div>
+                                    <label className="block text-xs font-black text-slate-400 uppercase tracking-widest mb-2 ml-2 flex justify-between">同步金鑰 (Sync Key) <span onClick=${()=>setSetupForm({...setupForm, syncId: generateSyncId()})} className="cursor-pointer text-indigo-500 hover:text-indigo-600"><${Icon} name="refresh" size=${12}/> 重產</span></label>
+                                    <input type="text" value=${setupForm.syncId} onInput=${e => setSetupForm({...setupForm, syncId: e.target.value})} className="input-standard text-center text-lg font-mono text-indigo-600 tracking-wider" placeholder="輸入相同金鑰以同步" />
+                                    <p className="text-[10px] text-slate-400 mt-2 text-center">💡 提示：在手機與電腦輸入相同的金鑰，即可同步資料。</p>
+                                </div>
+
+
+                                <button onClick=${handleSetupComplete} className="w-full py-4 bg-indigo-600 text-white rounded-2xl font-black text-lg shadow-xl hover:bg-indigo-700 active:scale-95 transition-all mt-4">
+                                    啟動系統 <${Icon} name="check" size=${20} className="inline ml-1"/>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }
+
+
+            return html`
+                <div className="min-h-screen flex flex-col md:flex-row bg-slate-50 dark:bg-dark-bg text-slate-800 dark:text-dark-text transition-colors duration-300">
+                    ${message && html`<div className=${`msg-box ${message.type==='success'?'bg-emerald-500':'bg-rose-500'} text-white`}>${message.txt}</div>`}
+
+
+                    <!-- Desktop Sidebar -->
+                    <div className="hidden md:flex w-72 border-r dark:border-slate-700 h-screen sticky top-0 flex-col bg-white dark:bg-dark-card transition-colors">
+                        <div className="p-8 flex items-center justify-between">
+                            <div className="flex items-center gap-3">
+                                <div className="w-10 h-10 bg-indigo-600 rounded-xl flex items-center justify-center text-white font-black shadow-lg shadow-indigo-500/30">L</div>
+                                <span className="text-xl font-black tracking-tighter">${appConfig.systemName}</span>
+                            </div>
+                            <button onClick=${()=>setDarkMode(!darkMode)} className="btn-circle">${darkMode ? html`<${Icon} name="sun" size=${20}/>` : html`<${Icon} name="moon" size=${20}/>`}</button>
+                        </div>
+                        
+                        <!-- 修正：移除 flex-1 並調整佈局順序，讓設定按鈕緊接導航 -->
+                        <nav className="p-4 space-y-2">
+                            ${['dashboard', 'calendar', 'todo', 'plan', 'note', 'accounting'].map(id => html`
+                                <button key=${id} onClick=${()=>setActiveTab(id)} className=${`w-full flex items-center p-4 rounded-xl font-bold transition-all ${activeTab === id ? 'nav-active' : 'text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800'}`}>
+                                    <${Icon} name=${id==='plan'?'map':id==='accounting'?'wallet':id} className="mr-3" />
+                                    <span>${id==='todo'?'任務管理':id==='plan'?'行程規劃':id==='note'?'記事筆記':id==='accounting'?'財務管理':id==='calendar'?'全曆總覽':'儀表板'}</span>
+                                </button>
+                            `)}
+                        </nav>
+                        
+                        <!-- 設定與說明按鈕區塊，向上移動 -->
+                        <div className="px-6 pb-4 flex gap-2 mt-2">
+                            <button onClick=${()=>setShowSettingsModal(true)} className="flex-1 py-3 bg-slate-100 dark:bg-slate-800 rounded-xl text-xs font-bold text-slate-500 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors flex items-center justify-center gap-2"><${Icon} name="settings" size=${16}/> 設定</button>
+                            <button onClick=${()=>setShowHelpModal(true)} className="w-12 py-3 bg-slate-100 dark:bg-slate-800 rounded-xl text-xs font-bold text-slate-500 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors flex items-center justify-center"><${Icon} name="help" size=${16}/></button>
+                        </div>
+                        
+                        <div className="flex-1"></div> <!-- 填充剩餘空間 -->
+                    </div>
+
+
+                    <!-- Mobile Nav -->
+                    <div className="md:hidden fixed bottom-0 left-0 right-0 bg-white/90 dark:bg-dark-card/90 backdrop-blur-lg border-t border-slate-100 dark:border-slate-800 z-50 safe-area-bottom flex justify-around p-2">
+                        ${['dashboard', 'calendar', 'todo', 'plan', 'note', 'accounting'].map(id => html`
+                            <button key=${id} onClick=${()=>setActiveTab(id)} className=${`flex flex-col items-center flex-1 py-1 transition-all ${activeTab === id ? 'text-indigo-600 dark:text-indigo-400 scale-105' : 'text-slate-300 dark:text-slate-600'}`}>
+                                <${Icon} name=${id==='plan'?'map':id==='accounting'?'wallet':id} size=${22} />
+                                <span className="text-[9px] mt-1 font-bold">${id==='todo'?'任務':id==='plan'?'行程':id==='note'?'記事':id==='accounting'?'記帳':id==='calendar'?'日曆':'首頁'}</span>
+                            </button>
+                        `)}
+                    </div>
+
+
+                    <!-- Main Content -->
+                    <main className="flex-1 p-4 md:p-10 main-content custom-scrollbar">
+                        <div className="max-w-5xl mx-auto space-y-8 animate-fade-in">
+                            
+                            <!-- Header Mobile -->
+                            <div className="flex justify-between items-center md:hidden">
+                                <div className="flex items-center gap-2">
+                                    <div className="w-8 h-8 bg-indigo-600 rounded-lg flex items-center justify-center text-white font-black text-sm">L</div>
+                                    <span className="font-black text-lg">${appConfig.systemName}</span>
+                                </div>
+                                <div className="flex gap-2">
+                                    <button onClick=${()=>setDarkMode(!darkMode)} className="p-2 bg-white dark:bg-slate-800 rounded-full shadow-sm">${darkMode ? html`<${Icon} name="sun" size=${18}/>` : html`<${Icon} name="moon" size=${18}/>`}</button>
+                                    <button onClick=${()=>setShowSettingsModal(true)} className="p-2 bg-white dark:bg-slate-800 rounded-full shadow-sm"><${Icon} name="settings" size=${18}/></button>
+                                    <!-- 修正：補回手機版頂部的說明按鈕 -->
+                                    <button onClick=${()=>setShowHelpModal(true)} className="p-2 bg-white dark:bg-slate-800 rounded-full shadow-sm"><${Icon} name="help" size=${18}/></button>
+                                </div>
+                            </div>
+
+
+                            ${activeTab === 'dashboard' && html`
+                                <div className="space-y-6">
+                                    <div className="glass-panel p-8 rounded-[2.5rem] flex flex-col md:flex-row items-center gap-8 shadow-sm">
+                                        <div className="flex-1 text-center md:text-left space-y-2">
+                                            <h2 className="text-2xl md:text-4xl font-black">午安，${appConfig.userName}</h2>
+                                            <p className="text-slate-400 dark:text-slate-500 font-bold">${appConfig.systemName} v69 (Sync) 模式已啟用。資料已雲端同步。</p>
+                                        </div>
+                                        <div className="bg-gradient-to-br from-indigo-600 to-indigo-800 p-8 rounded-[2rem] text-white shadow-xl w-full md:w-72 text-center">
+                                            <p className="opacity-70 text-xs font-bold uppercase tracking-widest mb-1">本月淨資產</p>
+                                            <h2 className="text-3xl font-black tracking-tight">$${stats.bal.toLocaleString()}</h2>
+                                        </div>
+                                    </div>
+                                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                                        <div className="bg-white dark:bg-dark-card p-6 rounded-[2rem] shadow-sm border border-slate-100 dark:border-slate-800">
+                                            <h3 className="font-bold text-sm text-slate-400 uppercase mb-4 flex justify-between">待辦速覽 <${Icon} name="todo" size=${16}/></h3>
+                                            <div className="space-y-3">
+                                                ${todos.slice(0,3).map(t=>html`
+                                                    <div key=${t.id} onClick=${()=>toggleTodo(t)} className="flex items-center text-sm font-bold bg-slate-50 dark:bg-slate-800/50 p-3 rounded-xl border dark:border-slate-700 cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors">
+                                                        <div className=${`w-5 h-5 rounded-full mr-3 border-2 flex items-center justify-center transition-all ${t.completed?'bg-indigo-500 border-indigo-500':'border-slate-300'}`}>
+                                                            ${t.completed && html`<${Icon} name="check" size=${12} className="text-white"/>`}
+                                                        </div>
+                                                        <span className=${t.completed ? 'text-slate-400 line-through' : ''}>${t.title}</span>
+                                                    </div>
+                                                `)}
+                                                ${todos.length===0 && html`<div className="text-center text-slate-300 text-sm py-4">無待辦事項</div>`}
+                                            </div>
+                                        </div>
+
+
+                                        <div className="bg-white dark:bg-dark-card p-6 rounded-[2rem] shadow-sm border border-slate-100 dark:border-slate-800">
+                                            <h3 className="font-bold text-sm text-slate-400 uppercase mb-4 flex justify-between">近期行程 <${Icon} name="map" size=${16}/></h3>
+                                            <div className="space-y-3">
+                                                ${plans.slice(0,3).map(p=>html`
+                                                    <div key=${p.id} className="bg-slate-50 dark:bg-slate-800/50 p-3 rounded-xl border dark:border-slate-700">
+                                                        <div className="font-bold text-sm truncate text-indigo-600 dark:text-indigo-400">${p.title}</div>
+                                                        <div className="flex justify-between items-center mt-1 text-[10px] text-slate-400 font-bold">
+                                                            <span><${Icon} name="calendar" size=${10} className="inline mr-1"/>${p.startDate}</span>
+                                                            <span className="truncate max-w-[50%]"><${Icon} name="map" size=${10} className="inline mr-1"/>${p.location}</span>
+                                                        </div>
+                                                    </div>
+                                                `)}
+                                                ${plans.length===0 && html`<div className="text-center text-slate-300 text-sm py-4">無行程規劃</div>`}
+                                            </div>
+                                        </div>
+
+
+                                        <div className="bg-white dark:bg-dark-card p-6 rounded-[2rem] shadow-sm border border-slate-100 dark:border-slate-800">
+                                            <h3 className="font-bold text-sm text-slate-400 uppercase mb-4 flex justify-between">最近記事 <${Icon} name="note" size=${16}/></h3>
+                                            <div className="space-y-3">
+                                                ${notes.slice(0,3).map(n=>html`
+                                                    <div key=${n.id} className="flex gap-3 bg-slate-50 dark:bg-slate-800/50 p-3 rounded-xl border dark:border-slate-700">
+                                                        <div className="w-12 h-12 rounded-lg bg-slate-200 dark:bg-slate-700 overflow-hidden flex-shrink-0">
+                                                            ${n.attachments?.[0] ? html`<img src=${n.attachments[0].url} className="w-full h-full object-cover"/>` : html`<div className="w-full h-full flex items-center justify-center text-slate-400"><${Icon} name="note" size=${20}/></div>`}
+                                                        </div>
+                                                        <div className="flex-1 min-w-0">
+                                                            <div className="font-bold truncate text-sm">${n.title}</div>
+                                                            <div className="text-[10px] text-slate-400">${n.date}</div>
+                                                        </div>
+                                                    </div>
+                                                `)}
+                                                ${notes.length===0 && html`<div className="text-center text-slate-300 text-sm py-4">無記事內容</div>`}
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            `}
+
+
+                            ${activeTab === 'calendar' && html`
+                                <div className="bg-white dark:bg-dark-card p-4 md:p-8 rounded-[2rem] shadow-sm border dark:border-slate-800">
+                                    <div className="flex justify-between items-center mb-6">
+                                        <h2 className="text-xl font-black flex items-center gap-2"><${Icon} name="calendar" className="text-indigo-500"/> ${calLogic.year} / ${calLogic.month+1}</h2>
+                                        <div className="flex gap-2">
+                                            <button onClick=${()=>setCurrentDate(new Date(currentDate.setMonth(currentDate.getMonth()-1)))} className="btn-circle shadow-sm"><${Icon} name="chevron-left" /></button>
+                                            <button onClick=${()=>setCurrentDate(new Date(currentDate.setMonth(currentDate.getMonth()+1)))} className="btn-circle shadow-sm"><${Icon} name="chevron-right" /></button>
+                                        </div>
+                                    </div>
+                                    <div className="grid grid-cols-7 gap-1 md:gap-2">
+                                        ${['日','一','二','三','四','五','六'].map(d=>html`<div key=${d} className="text-center text-xs text-slate-400 py-2">${d}</div>`)}
+                                        ${Array(calLogic.firstDay).fill(null).map((_,i)=>html`<div key=${`e-${i}`} className="h-16 md:h-28 bg-slate-50/50 dark:bg-slate-800/30 rounded-xl"></div>`)}
+                                        ${Array.from({length:calLogic.totalDays},(_,i)=>i+1).map(d=>{
+                                            const ds = `${calLogic.year}-${String(calLogic.month+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+                                            const hasN = notes.some(n=>n.date===ds); 
+                                            const hasT = transactions.some(t=>t.date===ds);
+                                            const hasTodo = todos.some(t=>t.date===ds);
+                                            const hasPlan = plans.some(p=>ds>=p.startDate&&ds<=p.endDate);
+                                            const isToday = ds === new Date().toISOString().split('T')[0];
+                                            const lunar = getLunarDate(new Date(ds)); 
+
+
+                                            return html`
+                                                <div key=${d} onClick=${()=>{
+                                                    const ns = notes.filter(n=>n.date===ds); const ts = transactions.filter(t=>t.date===ds);
+                                                    const ps = plans.filter(p=>ds>=p.startDate&&ds<=p.endDate); const tds = todos.filter(t=>t.date===ds);
+                                                    setDayDetail({date:ds, notes:ns, transactions:ts, plans:ps, todos:tds});
+                                                }} className=${`h-16 md:h-28 border dark:border-slate-700 rounded-xl p-1 md:p-2 cursor-pointer transition-all hover:border-indigo-400 flex flex-col items-center justify-between ${isToday?'bg-indigo-50 dark:bg-indigo-900/20 border-indigo-200':''}`}>
+                                                    <div className="flex flex-col items-center">
+                                                        <span className=${`text-sm font-bold ${isToday?'text-indigo-600 dark:text-indigo-400':''}`}>${d}</span>
+                                                        <span className="text-[10px] text-slate-400 dark:text-slate-500 font-normal scale-90 -mt-0.5">${lunar}</span>
+                                                    </div>
+                                                    <div className="flex gap-1 mb-1 flex-wrap justify-center">
+                                                        ${hasPlan && html`<div className="w-1.5 h-1.5 rounded-full bg-purple-400" title="行程"></div>`}
+                                                        ${hasTodo && html`<div className="w-1.5 h-1.5 rounded-full bg-blue-400" title="任務"></div>`}
+                                                        ${hasN && html`<div className="w-1.5 h-1.5 rounded-full bg-orange-400" title="記事"></div>`}
+                                                        ${hasT && html`<div className="w-1.5 h-1.5 rounded-full bg-emerald-400" title="收支"></div>`}
+                                                    </div>
+                                                </div>
+                                            `
+                                        })}
+                                    </div>
+                                </div>
+                            `}
+
+
+                            ${['todo','plan','note','accounting'].includes(activeTab) && html`
+                                <div className="space-y-6">
+                                    <div className="flex justify-between items-center">
+                                        <h2 className="text-2xl font-black flex items-center gap-2">
+                                            ${activeTab==='accounting' && html`<span className="flex items-center gap-2">收支管理 <span className="text-sm bg-indigo-100 text-indigo-700 px-2 py-1 rounded-lg dark:bg-indigo-900 dark:text-indigo-300">總資產 $${stats.bal.toLocaleString()}</span></span>`}
+                                            ${activeTab==='note' && '筆記中心'}
+                                            ${activeTab==='plan' && '行程規劃'}
+                                            ${activeTab==='todo' && '任務清單'}
+                                        </h2>
+                                        <div className="flex gap-2">
+                                            ${activeTab==='accounting' && html`<button onClick=${exportFinanceCSV} className="hidden md:flex bg-white dark:bg-slate-700 text-slate-500 dark:text-slate-300 px-3 py-2 rounded-xl shadow-sm border dark:border-slate-600 active:scale-95 font-bold items-center gap-2 hover:text-indigo-600" title="匯出 CSV 報表"><${Icon} name="download" size=${18}/> 報表</button>`}
+                                            ${activeTab==='plan' && html`<button onClick=${exportPlanDoc} className="hidden md:flex bg-white dark:bg-slate-700 text-slate-500 dark:text-slate-300 px-3 py-2 rounded-xl shadow-sm border dark:border-slate-600 active:scale-95 font-bold items-center gap-2 hover:text-indigo-600" title="匯出行程清單"><${Icon} name="file-text" size=${18}/> 匯出</button>`}
+                                            <button onClick=${()=>openModal(activeTab==='accounting'?'trans':activeTab)} className="bg-indigo-600 text-white px-4 py-2 rounded-xl shadow-lg active:scale-95 font-bold flex items-center gap-2 hover:bg-indigo-700"><${Icon} name="plus" size=${18}/> 新增</button>
+                                        </div>
+                                    </div>
+                                    
+                                    ${activeTab === 'accounting' && html`
+                                        <div className="bg-white dark:bg-dark-card p-6 rounded-[2rem] shadow-sm border dark:border-slate-800">
+                                            <h3 className="text-xs font-bold text-slate-400 mb-4 uppercase">本月收支結構分析</h3>
+                                            <${FinancialChart} income=${stats.in} expense=${stats.ex} />
+                                        </div>
+                                    `}
+
+
+                                    <div className="grid grid-cols-1 gap-4">
+                                        ${(activeTab==='todo'?todos:activeTab==='plan'?plans:activeTab==='note'?notes:transactions).map(item=>html`
+                                            <div key=${item.id} className="bg-white dark:bg-dark-card p-5 rounded-2xl shadow-sm border dark:border-slate-800 flex items-center gap-4 group hover:shadow-md transition-all">
+                                                
+                                                ${activeTab==='todo' && html`
+                                                    <button onClick=${(e)=>{e.stopPropagation(); toggleTodo(item);}} className=${`w-6 h-6 rounded-full border-2 flex-shrink-0 flex items-center justify-center transition-all ${item.completed ? 'bg-indigo-500 border-indigo-500' : 'border-slate-300 hover:border-indigo-500'}`}>
+                                                        ${item.completed && html`<${Icon} name="check" size=${14} className="text-white"/>`}
+                                                    </button>
+                                                `}
+
+
+                                                ${activeTab==='note' && item.attachments?.[0] && html`<img src=${item.attachments[0].url} className="w-16 h-16 rounded-xl object-cover bg-slate-100"/>`}
+                                                
+                                                <div className="flex-1 min-w-0">
+                                                    <div className="flex justify-between items-start">
+                                                        <h4 className=${`font-bold text-lg truncate pr-2 ${activeTab==='todo' && item.completed ? 'text-slate-400 line-through' : ''}`}>${item.title || item.category}</h4>
+                                                        ${activeTab==='accounting' && html`<span className=${`font-mono font-bold ${item.type==='income'?'text-emerald-500':'text-rose-500'}`}>${item.type==='income'?'+':'-'}$${item.amount}</span>`}
+                                                    </div>
+                                                    <p className="text-sm text-slate-400 truncate">${item.content || item.description || item.location}</p>
+                                                    <div className="text-[10px] text-slate-300 dark:text-slate-600 mt-1 font-bold uppercase tracking-wider">${item.date || item.startDate} ${item.time}</div>
+                                                </div>
+                                                <div className="flex gap-2 opacity-100 md:opacity-0 group-hover:opacity-100 transition-opacity">
+                                                    ${activeTab==='note' && html`
+                                                        <button onClick=${()=>exportNoteText(item)} className="p-2 text-slate-300 hover:text-indigo-500" title="匯出 TXT"><${Icon} name="file-text"/></button>
+                                                        <button onClick=${()=>exportNotePDF(item)} className="p-2 text-slate-300 hover:text-indigo-500" title="匯出 PDF (含圖片/中文)"><${Icon} name="download"/></button>
+                                                    `}
+                                                    ${activeTab==='plan' && html`
+                                                        <button onClick=${()=>exportSinglePlan(item)} className="p-2 text-slate-300 hover:text-indigo-500" title="匯出此行程 (TXT)"><${Icon} name="download"/></button>
+                                                    `}
+                                                    <button onClick=${()=>openModal(activeTab==='accounting'?'trans':activeTab, item)} className="p-2 text-slate-300 hover:text-indigo-500"><${Icon} name="edit"/></button>
+                                                    <button onClick=${()=>setDeleteTarget({col:activeTab==='accounting'?'transactions':activeTab+'s', id:item.id})} className="p-2 text-slate-300 hover:text-rose-500"><${Icon} name="trash"/></button>
+                                                </div>
+                                            </div>
+                                        `)}
+                                        ${((activeTab==='todo'?todos:activeTab==='plan'?plans:activeTab==='note'?notes:transactions).length === 0) && html`<div className="text-center py-12 text-slate-300 font-bold">目前沒有資料</div>`}
+                                    </div>
+                                </div>
+                            `}
+
+
+                        </div>
+                    </main>
+
+
+                    <${Modal} isOpen=${!!deleteTarget} onClose=${()=>setDeleteTarget(null)} title="確認刪除">
+                        <div className="text-center space-y-6">
+                            <p className="text-slate-500">確定要永久移除此項目嗎？此動作無法復原。</p>
+                            <div className="flex gap-4">
+                                <button onClick=${()=>setDeleteTarget(null)} className="flex-1 py-3 bg-slate-100 dark:bg-slate-700 rounded-xl font-bold">取消</button>
+                                <button onClick=${executeDelete} className="flex-1 py-3 bg-rose-500 text-white rounded-xl font-bold shadow-lg shadow-rose-500/30">確認刪除</button>
+                            </div>
+                        </div>
+                    </${Modal}>
+
+
+                    <${Modal} isOpen=${!!dayDetail} onClose=${()=>setDayDetail(null)} title=${`${dayDetail?.date} 摘要`}>
+                        <div className="space-y-4">
+                            ${['plans','todos','notes','transactions'].map(key => dayDetail?.[key]?.length > 0 && html`
+                                <div key=${key} className="space-y-2">
+                                    <h4 className="text-xs font-bold text-slate-400 uppercase tracking-widest">${key==='plans'?'行程':key==='todos'?'任務':key==='notes'?'筆記':'收支'}</h4>
+                                    ${dayDetail[key].map(d=>html`
+                                        <div key=${d.id} onClick=${()=>{setDayDetail(null); openModal(key==='transactions'?'trans':key.slice(0,-1), d);}} className="p-3 bg-slate-50 dark:bg-slate-800 rounded-xl text-sm font-bold flex justify-between cursor-pointer hover:bg-indigo-50 dark:hover:bg-indigo-900/30">
+                                            <span>${d.title||d.category}</span>
+                                            ${d.amount && html`<span>$${d.amount}</span>`}
+                                        </div>
+                                    `)}
+                                </div>
+                            `)}
+                            ${Object.values(dayDetail||{}).flat().length === 1 && html`<div className="text-center text-slate-300 py-4">本日無紀錄</div>`}
+                        </div>
+                    </${Modal}>
+
+
+                    <${Modal} isOpen=${showTransModal} onClose=${()=>{setShowTransModal(false); setEditingId(null);}} title=${editingId?'編輯收支':'新增收支'} isSaving=${isSaving}>
+                        <div className="space-y-4">
+                            <div className="flex bg-slate-100 dark:bg-slate-800 p-1 rounded-xl">
+                                ${['expense','income'].map(t=>html`<button key=${t} onClick=${()=>setTransForm({...transForm, type:t})} className=${`flex-1 py-3 rounded-lg font-bold text-sm transition-all ${transForm.type===t?'bg-white dark:bg-slate-600 shadow-sm text-indigo-600 dark:text-white':'text-slate-400'}`}>${t==='expense'?'支出':'收入'}</button>`)}
+                            </div>
+                            <input type="number" value=${transForm.amount} onChange=${e=>setTransForm({...transForm, amount:e.target.value})} className="text-center w-full bg-transparent text-5xl font-black outline-none text-slate-800 dark:text-white placeholder-slate-200" placeholder="0" />
+                            <div className="grid grid-cols-2 gap-3">
+                                <input type="date" value=${transForm.date} onChange=${e=>setTransForm({...transForm, date:e.target.value})} className="input-standard" />
+                                <input type="time" value=${transForm.time} onChange=${e=>setTransForm({...transForm, time:e.target.value})} className="input-standard" />
+                            </div>
+                            <div className="grid grid-cols-2 gap-3">
+                                <div>
+                                    <input list="list-categories" value=${transForm.category} onChange=${e=>setTransForm({...transForm, category:e.target.value})} className="input-standard" placeholder="類別 (如: 飲食)" autocomplete="off" />
+                                    <datalist id="list-categories">${historyOptions.categories.map((c,i)=>html`<option key=${i} value=${c}>${c}</option>`)}</datalist>
+                                </div>
+                                <div>
+                                    <input list="list-recipients" value=${transForm.recipient} onChange=${e=>setTransForm({...transForm, recipient:e.target.value})} className="input-standard" placeholder="對象 (如: 自己)" autocomplete="off" />
+                                    <datalist id="list-recipients">${historyOptions.recipients.map((r,i)=>html`<option key=${i} value=${r}>${r}</option>`)}</datalist>
+                                </div>
+                            </div>
+                            <input type="text" value=${transForm.description} onChange=${e=>setTransForm({...transForm, description:e.target.value})} className="input-standard" placeholder="備註說明 (如: 午餐便當)" />
+                            <button onClick=${()=>saveData('transactions', transForm, setTransForm, defaultTrans, setShowTransModal, "記帳成功")} className="w-full py-4 bg-emerald-500 text-white rounded-xl font-black shadow-lg shadow-emerald-500/30 mt-4 active:scale-95 transition-transform">儲存紀錄</button>
+                        </div>
+                    </${Modal}>
+
+
+                    <${Modal} isOpen=${showNoteModal} onClose=${()=>{setShowNoteModal(false); setEditingId(null); setIsDrawingMode(false);}} title=${isDrawingMode?'手繪板':(editingId?'編輯筆記':'新增筆記')} size="lg" isSaving=${isSaving}>
+                        ${!isDrawingMode ? html`
+                            <div className="space-y-4">
+                                <input type="text" value=${noteForm.title} onChange=${e=>setNoteForm({...noteForm, title:e.target.value})} className="input-standard text-lg" placeholder="標題..." />
+                                <div className="flex gap-2">
+                                    <label className="flex-1 bg-slate-100 dark:bg-slate-800 p-3 rounded-xl flex flex-col items-center justify-center cursor-pointer hover:bg-indigo-50 dark:hover:bg-slate-700 transition-colors">
+                                        <${Icon} name="camera" className="mb-1 text-slate-500"/>
+                                        <span className="text-[10px] font-bold text-slate-500">拍照</span>
+                                        <input type="file" className="hidden" accept="image/*" capture="environment" onChange=${handleImageUpload}/>
+                                    </label>
+                                    <label className="flex-1 bg-slate-100 dark:bg-slate-800 p-3 rounded-xl flex flex-col items-center justify-center cursor-pointer hover:bg-indigo-50 dark:hover:bg-slate-700 transition-colors">
+                                        <${Icon} name="image" className="mb-1 text-slate-500"/>
+                                        <span className="text-[10px] font-bold text-slate-500">相簿</span>
+                                        <input type="file" className="hidden" accept="image/*" onChange=${handleImageUpload}/>
+                                    </label>
+                                    <button onClick=${()=>setIsDrawingMode(true)} className="flex-1 bg-slate-100 dark:bg-slate-800 p-3 rounded-xl flex flex-col items-center justify-center hover:bg-indigo-50 dark:hover:bg-slate-700 transition-colors">
+                                        <${Icon} name="pen" className="mb-1 text-slate-500"/>
+                                        <span className="text-[10px] font-bold text-slate-500">手繪</span>
+                                    </button>
+                                </div>
+                                ${noteForm.attachments.length > 0 && html`
+                                    <div className="flex gap-2 overflow-x-auto py-2">
+                                        ${noteForm.attachments.map((a,i)=>html`
+                                            <div key=${i} className="relative w-24 h-24 flex-shrink-0">
+                                                <img src=${a.url} className="w-full h-full object-cover rounded-lg"/>
+                                                <button onClick=${()=>setNoteForm(p=>({...p, attachments:p.attachments.filter((_,idx)=>idx!==i)}))} className="absolute -top-1 -right-1 bg-rose-500 text-white rounded-full p-0.5"><${Icon} name="x" size=${12}/></button>
+                                            </div>
+                                        `)}
+                                    </div>
+                                `}
+                                <textarea rows="6" value=${noteForm.content} onChange=${e=>setNoteForm({...noteForm, content:e.target.value})} className="input-standard" placeholder="寫點什麼..." />
+                                
+                                <div>
+                                    <input list="list-tags" type="text" value=${noteForm.tags} onChange=${e=>setNoteForm({...noteForm, tags:e.target.value})} className="input-standard" placeholder="標籤分類 (如: 美食, 旅遊)..." autocomplete="off"/>
+                                    <datalist id="list-tags">${uniqueTags.map((t,i)=>html`<option key=${i} value=${t}>${t}</option>`)}</datalist>
+                                </div>
+
+
+                                <div className="grid grid-cols-2 gap-3">
+                                    <input type="date" value=${noteForm.date} onChange=${e=>setNoteForm({...noteForm, date:e.target.value})} className="input-standard" />
+                                    <input type="time" value=${noteForm.time} onChange=${e=>setNoteForm({...noteForm, time:e.target.value})} className="input-standard" />
+                                </div>
+                                <button onClick=${()=>saveData('notes', noteForm, setNoteForm, defaultNote, setShowNoteModal, "筆記已儲存")} className="w-full py-4 bg-indigo-600 text-white rounded-xl font-black shadow-lg shadow-indigo-600/30 active:scale-95 transition-transform">儲存筆記</button>
+                            </div>
+                        ` : html`
+                            <${DrawingPad} onSave=${(img)=>{setNoteForm(p=>({...p, attachments:[...p.attachments, {url:img}]})); setIsDrawingMode(false);}} onCancel=${()=>setIsDrawingMode(false)} />
+                        `}
+                    </${Modal}>
+
+
+                    <${Modal} isOpen=${showPlanModal} onClose=${()=>{setShowPlanModal(false); setEditingId(null);}} title="行程規劃" isSaving=${isSaving}>
+                        <div className="space-y-4">
+                            <input type="text" value=${planForm.title} onChange=${e=>setPlanForm({...planForm, title:e.target.value})} className="input-standard text-lg" placeholder="行程名稱 (如: 日本行)" />
+                            <div className="grid grid-cols-2 gap-3">
+                                <input type="date" value=${planForm.startDate} onChange=${e=>setPlanForm({...planForm, startDate:e.target.value})} className="input-standard" />
+                                <input type="date" value=${planForm.endDate} onChange=${e=>setPlanForm({...planForm, endDate:e.target.value})} className="input-standard" />
+                            </div>
+                            <input type="text" value=${planForm.location} onChange=${e=>setPlanForm({...planForm, location:e.target.value})} className="input-standard" placeholder="地點" />
+                            <textarea rows="4" value=${planForm.description} onChange=${e=>setPlanForm({...planForm, description:e.target.value})} className="input-standard" placeholder="詳細規劃..." />
+                            <button onClick=${()=>saveData('plans', planForm, setPlanForm, defaultPlan, setShowPlanModal, "行程已儲存")} className="w-full py-4 bg-orange-500 text-white rounded-xl font-black shadow-lg shadow-orange-500/30 active:scale-95 transition-transform">儲存行程</button>
+                        </div>
+                    </${Modal}>
+
+
+                    <${Modal} isOpen=${showTodoModal} onClose=${()=>{setShowTodoModal(false); setEditingId(null);}} title="待辦事項" isSaving=${isSaving}>
+                        <div className="space-y-4">
+                            <input type="text" value=${todoForm.title} onChange=${e=>setTodoForm({...todoForm, title:e.target.value})} className="input-standard text-lg" placeholder="要做什麼？" />
+                            <div className="grid grid-cols-2 gap-3">
+                                <input type="date" value=${todoForm.date} onChange=${e=>setTodoForm({...todoForm, date:e.target.value})} className="input-standard" />
+                                <input type="time" value=${todoForm.time} onChange=${e=>setTodoForm({...todoForm, time:e.target.value})} className="input-standard" />
+                            </div>
+                            <textarea rows="3" value=${todoForm.content} onChange=${e=>setTodoForm({...todoForm, content:e.target.value})} className="input-standard" placeholder="備註..." />
+                            <button onClick=${()=>saveData('todos', todoForm, setTodoForm, defaultTodo, setShowTodoModal, "任務已建立")} className="w-full py-4 bg-indigo-600 text-white rounded-xl font-black shadow-lg shadow-indigo-600/30 active:scale-95 transition-transform">建立任務</button>
+                        </div>
+                    </${Modal}>
+
+
+                    <${Modal} isOpen=${showHelpModal} onClose=${()=>setShowHelpModal(false)} title="系統操作指南">
+                        <div className="space-y-4 text-sm leading-relaxed">
+                            <div className="p-5 bg-slate-50 dark:bg-slate-800/50 rounded-2xl space-y-6">
+                                <section>
+                                    <h4 className="font-black text-indigo-600 dark:text-indigo-400 mb-2 text-base flex items-center gap-2"><${Icon} name="refresh" size=${18}/> 雲端同步設定</h4>
+                                    <p className="text-slate-600 dark:text-slate-400">本系統採用<b>「金鑰同步」</b>技術。若要讓手機與電腦連動，或在清除快取後找回資料，請至<b>「設定」</b>頁面確認您的<b>「同步金鑰」</b>。</p>
+                                </section>
+                                
+                                <section>
+                                    <h4 className="font-black text-indigo-600 dark:text-indigo-400 mb-2 text-base flex items-center gap-2"><${Icon} name="calendar" size=${18}/> 全曆總覽</h4>
+                                    <p className="text-slate-600 dark:text-slate-400">以月曆形式檢視所有活動。日期下方的圓點代表當日有紀錄：<br/>
+                                    <span className="inline-flex items-center gap-1 mt-1"><span className="w-2 h-2 rounded-full bg-purple-400"></span>行程</span>
+                                    <span className="inline-flex items-center gap-1 mt-1 ml-2"><span className="w-2 h-2 rounded-full bg-blue-400"></span>任務</span>
+                                    <span className="inline-flex items-center gap-1 mt-1 ml-2"><span className="w-2 h-2 rounded-full bg-orange-400"></span>記事</span>
+                                    <span className="inline-flex items-center gap-1 mt-1 ml-2"><span className="w-2 h-2 rounded-full bg-emerald-400"></span>收支</span><br/>
+                                    點擊日期格即可查看當日的詳細內容摘要。</p>
+                                </section>
+                                
+                                <section>
+                                    <h4 className="font-black text-indigo-600 dark:text-indigo-400 mb-2 text-base flex items-center gap-2"><${Icon} name="wallet" size=${18}/> 財務管理</h4>
+                                    <p className="text-slate-600 dark:text-slate-400">快速記錄收入與支出。系統具備<b>「智慧記憶」</b>功能，會自動記住您輸入過的「類別」與「對象」。點擊右上角按鈕可匯出 CSV 報表。</p>
+                                </section>
+
+
+                                <section>
+                                    <h4 className="font-black text-indigo-600 dark:text-indigo-400 mb-2 text-base flex items-center gap-2"><${Icon} name="note" size=${18}/> 記事筆記</h4>
+                                    <p className="text-slate-600 dark:text-slate-400">支援多元輸入方式：<b>文字撰寫</b>、<b>拍照/相簿圖片匯入</b>以及<b>手繪板</b>功能。單篇筆記可匯出為純文字 TXT 或包含圖片排版的 PDF 檔案以便分享。</p>
+                                </section>
+                            </div>
+                            <p className="text-slate-400 text-xs text-center pt-2">${appConfig.systemName} v69.0 • 您的全方位數位生活管家</p>
+                        </div>
+                    </${Modal}>
+
+
+                    <${Modal} isOpen=${showSettingsModal} onClose=${()=>setShowSettingsModal(false)} title="系統設定">
+                        <div className="space-y-6">
+                            <div className="p-4 bg-indigo-50 dark:bg-indigo-900/30 rounded-2xl border border-indigo-100 dark:border-indigo-800">
+                                <label className="block text-xs font-black text-indigo-500 uppercase tracking-widest mb-2">您的同步金鑰 (Sync Key)</label>
+                                <div className="flex gap-2">
+                                    <input type="text" value=${appConfig.syncId} readOnly className="input-standard text-center font-mono text-indigo-600 tracking-wider bg-white dark:bg-slate-900 select-all" />
+                                    <button onClick=${()=>{navigator.clipboard.writeText(appConfig.syncId); flashMsg("金鑰已複製")}} className="p-3 bg-indigo-600 text-white rounded-xl shadow-lg active:scale-95"><${Icon} name="file-text" size=${20}/></button>
+                                </div>
+                                <p className="text-[10px] text-indigo-400 mt-2 text-center">⚠️ 請妥善保存此金鑰，它是您找回資料的唯一憑證。</p>
+                            </div>
+
+
+                            <div className="space-y-4">
+                                <div>
+                                    <label className="block text-xs font-black text-slate-400 uppercase tracking-widest mb-1 ml-1">操作者名稱</label>
+                                    <input type="text" value=${appConfig.userName} onInput=${e => setAppConfig({...appConfig, userName: e.target.value})} className="input-standard" />
+                                </div>
+                                <div>
+                                    <label className="block text-xs font-black text-slate-400 uppercase tracking-widest mb-1 ml-1">系統名稱</label>
+                                    <input type="text" value=${appConfig.systemName} onInput=${e => setAppConfig({...appConfig, systemName: e.target.value})} className="input-standard" />
+                                </div>
+                            </div>
+                            
+                            <div className="pt-4 border-t dark:border-slate-700">
+                                <button onClick=${()=>setShowSettingsModal(false)} className="w-full py-4 bg-slate-800 dark:bg-slate-700 text-white rounded-xl font-bold shadow-lg active:scale-95 transition-all">儲存設定</button>
+                            </div>
+                        </div>
+                    </${Modal}>
+
+
+                </div>
+            `;
+        }
+
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(html`<${App} />`);
+    </script>
+</body>
+</html>
